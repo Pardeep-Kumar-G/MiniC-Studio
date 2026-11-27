@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiniC Studio</title>
+<style>
+:root {
+  --bg: #1b1d22; --panel: #23262d; --border: #363a44; --text: #e6e8ec; --muted: #969cab;
+  --accent: #5b9dff; --ok: #4cc38a; --bad: #ff6b6b; --warn: #f2c14e;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --panel: #f2f4f7; --border: #d5d9e0; --text: #1c2028; --muted: #5d6471;
+  --accent: #2f6fdf; --ok: #1d8653; --bad: #d23f3f; --warn: #9a6700;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px system-ui, sans-serif; }
+header { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0 auto 0 0; }
+header h1 small { color: var(--muted); font-weight: normal; font-size: 13px; }
+select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+button { cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button.run { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+#pipeline { display: flex; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+.stage { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.stage.ok { border-color: var(--ok); color: var(--ok); }
+.stage.bad { border-color: var(--bad); color: var(--bad); }
+.arrow { color: var(--border); }
+main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+.editor { display: flex; min-height: 0; border-right: 1px solid var(--border); }
+#gutter { padding: 10px 8px; min-width: 46px; text-align: right; color: var(--muted); background: var(--panel); font: 13px/1.5 var(--mono); overflow: hidden; user-select: none; }
+#gutter .err { color: var(--bad); font-weight: 700; }
+#gutter .warn { color: var(--warn); font-weight: 700; }
+.code { position: relative; flex: 1; min-width: 0; background: var(--bg); overflow: hidden; }
+#src { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; outline: 0; resize: none; padding: 10px; background: transparent; color: var(--text); font: 13px/1.5 var(--mono); white-space: pre; overflow: auto; tab-size: 4; }
+.hl { position: absolute; left: 0; right: 0; height: 19.5px; pointer-events: none; display: none; }
+#hl-link { background: color-mix(in srgb, var(--warn) 20%, transparent); }
+#hl-step { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.right { display: flex; flex-direction: column; min-height: 0; }
+nav { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; }
+nav button { background: none; border: 0; border-radius: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 11px; white-space: nowrap; }
+nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; }
+.pane { flex: 1; overflow: auto; padding: 12px 16px; display: none; }
+.pane.active { display: block; }
+pre { margin: 0; font: 13px/1.5 var(--mono); white-space: pre; }
+h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.bad { color: var(--bad); }
+.ok { color: var(--ok); }
+.errors div { padding: 8px 10px; border-left: 3px solid var(--bad); background: var(--panel); margin-bottom: 6px; border-radius: 4px; cursor: pointer; }
+.errors div.warning { border-color: var(--warn); }
+.errors b { font-family: var(--mono); }
+table { border-collapse: collapse; font: 13px var(--mono); }
+td, th { padding: 3px 14px 3px 0; text-align: left; }
+th { color: var(--muted); font-weight: normal; position: sticky; top: 0; background: var(--bg); }
+.tree, .tree ul { list-style: none; margin: 0; padding-left: 16px; font: 13px/1.6 var(--mono); }
+.tree { padding-left: 0; }
+.tree summary { cursor: pointer; }
+.tree .leaf { padding-left: 14px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rows { font: 13px/1.5 var(--mono); }
+.rows div { white-space: pre; padding: 0 6px; border-radius: 3px; min-height: 19.5px; }
+.rows div.linked { background: color-mix(in srgb, var(--warn) 20%, transparent); }
+.rows div.cur { background: color-mix(in srgb, var(--accent) 30%, transparent); font-weight: 700; }
+.hint { font-size: 12px; margin: 0 0 10px; }
+.toggle { display: inline-flex; margin-bottom: 10px; }
+.toggle button { border-radius: 0; }
+.toggle button:first-child { border-radius: 6px 0 0 6px; }
+.toggle button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.toggle button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cfg { display: block; margin-bottom: 18px; }
+.cfg rect { fill: var(--panel); stroke: var(--border); stroke-width: 1.2; }
+.cfg text { font: 12px var(--mono); fill: var(--text); }
+.cfg .unreach rect { stroke: var(--bad); stroke-dasharray: 5 4; fill: none; }
+.cfg .unreach text { fill: var(--muted); }
+.cfg text.ul { fill: var(--bad); font-size: 11px; }
+.cfg g.linked rect { stroke: var(--warn); stroke-width: 2.5; }
+.cfg path { fill: none; stroke-width: 1.6; }
+.cfg .eg { stroke: var(--muted); } .cfg .et { stroke: var(--ok); } .cfg .ef { stroke: var(--bad); }
+.cfg text.lt { fill: var(--ok); font-size: 11px; } .cfg text.lf { fill: var(--bad); font-size: 11px; }
+.cfg .ah { fill: var(--muted); }
+.dbg-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.dbg-bar input { flex: 1; min-width: 120px; }
+.dbg { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; }
+#dbg-asm { position: relative; max-height: calc(100vh - 290px); min-height: 200px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 0; }
+.dbg-side h3 { margin: 12px 0 4px; text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
+.dbg-side h3:first-child { margin-top: 0; }
+.dbg-side .chg { color: var(--accent); font-weight: 700; }
+.dbg-side .tmp { color: var(--muted); }
+#dbg-out { background: var(--panel); border-radius: 6px; padding: 6px 8px; min-height: 40px; max-height: 160px; overflow: auto; }
+@media (max-width: 800px) {
+  body { height: auto; }
+  main { grid-template-columns: 1fr; }
+  .editor { height: 50vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .pane { min-height: 50vh; }
+  .cols, .dbg { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>MiniC Studio <small>lexer → parser → semantic → TAC → optimizer → codegen → run</small></h1>
+  <label for="examples" class="muted">Example</label>
+  <select id="examples"></select>
+  <button id="theme" title="Switch light / dark mode"></button>
+  <button class="run" id="run" title="Ctrl+Enter">▶ Compile &amp; Run</button>
+</header>
+<div id="pipeline"></div>
+<main>
+  <div class="editor">
+    <div id="gutter" aria-hidden="true"></div>
+    <div class="code">
+      <div class="hl" id="hl-link"></div>
+      <div class="hl" id="hl-step"></div>
+      <textarea id="src" spellcheck="false" aria-label="MiniC source code"></textarea>
+    </div>
+  </div>
+  <div class="right">
+    <nav id="tabs"></nav>
+    <div class="pane" id="p-output"></div>
+    <div class="pane errors" id="p-errors"></div>
+    <div class="pane" id="p-tokens"></div>
+    <div class="pane" id="p-tree"></div>
+    <div class="pane" id="p-tac"></div>
+    <div class="pane" id="p-cfg"></div>
+    <div class="pane" id="p-asm"></div>
+    <div class="pane" id="p-debug"></div>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const src = $('#src'), gutter = $('#gutter'), hlLink = $('#hl-link'), hlStep = $('#hl-step');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+const TABS = [['output', 'Output'], ['errors', 'Errors'], ['tokens', 'Tokens'], ['tree', 'Parse Tree'],
+              ['tac', 'TAC & Optimizer'], ['cfg', 'Control Flow'], ['asm', 'Assembly'], ['debug', 'Debugger']];
+const STAGES = ['Lexer', 'Parser', 'Semantic', 'TAC', 'Optimizer', 'Codegen', 'Run'];
+const LINE_H = 19.5, PAD = 10;  // editor line height and top padding (px), used to place highlights
+let marks = {};       // line -> 'err' | 'warn'
+let result = null;    // last compile result
+let stale = true;     // source edited since the last compile: line links no longer match
+let tab = 'output';
+
+// ---- theme
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('#theme').textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+}
+let savedTheme = null;
+try { savedTheme = localStorage.getItem('minic-theme'); } catch (e) {}
+setTheme(savedTheme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+$('#theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  setTheme(t);
+  try { localStorage.setItem('minic-theme', t); } catch (e) {}
+};
+
+// ---- tabs
+$('#tabs').innerHTML = TABS.map(([id, name]) => `<button data-tab="${id}">${name}<span id="n-${id}"></span></button>`).join('');
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.tab); };
+function show(t) {
+  tab = t;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'p-' + t));
+  if (t === 'debug' && dbg) drawStep(); else { placeHl(hlStep, 0); stopPlay(); }
+}
+
+// ---- editor: gutter, highlights, linked lines
+function renderGutter() {
+  const n = src.value.split('\n').length;
+  let html = '';
+  for (let i = 1; i <= n; i++) html += `<div class="${marks[i] || ''}">${i}</div>`;
+  gutter.innerHTML = html;
+  gutter.scrollTop = src.scrollTop;
+}
+function placeHl(el, line) {
+  el.dataset.line = line || 0;
+  el.style.display = line && !stale ? 'block' : 'none';
+  if (line) el.style.top = (PAD + (line - 1) * LINE_H - src.scrollTop) + 'px';
+}
+function revealLine(line) {
+  const top = PAD + (line - 1) * LINE_H;
+  if (top < src.scrollTop || top + LINE_H > src.scrollTop + src.clientHeight) src.scrollTop = Math.max(0, top - src.clientHeight / 3);
+}
+function linkFromCaret() {
+  document.querySelectorAll('.linked').forEach(e => e.classList.remove('linked'));
+  if (stale || !result) return;
+  const line = src.value.slice(0, src.selectionStart).split('\n').length;
+  document.querySelectorAll(`.rows div[data-line="${line}"], .cfg g[data-lines~="${line}"]`).forEach(e => e.classList.add('linked'));
+}
+src.addEventListener('input', () => {
+  marks = {}; stale = true; renderGutter(); placeHl(hlLink, 0); placeHl(hlStep, 0); linkFromCaret();
+});
+src.addEventListener('scroll', () => {
+  gutter.scrollTop = src.scrollTop;
+  placeHl(hlLink, +hlLink.dataset.line); placeHl(hlStep, +hlStep.dataset.line);
+});
+src.addEventListener('click', linkFromCaret);
+src.addEventListener('keyup', linkFromCaret);
+src.addEventListener('keydown', e => {
+  if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); src.setRangeText('    ', src.selectionStart, src.selectionEnd, 'end'); renderGutter(); }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); compile(); }
+});
+// hovering anything that knows its source line (TAC, assembly, CFG blocks, tokens, errors) highlights that line
+$('.right').addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-line]');
+  placeHl(hlLink, el ? +el.dataset.line : 0);
+  if (el && +el.dataset.line) revealLine(+el.dataset.line);
+});
+$('.right').addEventListener('mouseleave', () => placeHl(hlLink, 0));
+
+function goToLine(line) {
+  const lines = src.value.split('\n');
+  const start = lines.slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0);
+  src.focus();
+  src.setSelectionRange(start, start + (lines[line - 1] || '').length);
+  src.scrollTop = Math.max(0, (line - 4) * LINE_H);
+}
+$('#p-errors').onclick = e => { const d = e.target.closest('[data-line]'); if (d) goToLine(+d.dataset.line); };
+
+// ---- rendering helpers
+const rowsHTML = (text, lines, id) => `<div class="rows"${id ? ` id="${id}"` : ''}>` +
+  text.split('\n').map((t, i) => `<div data-line="${lines[i] || 0}">${esc(t) || ' '}</div>`).join('') + '</div>';
+
+function treeHTML(node) {
+  if (!node.children.length) return `<li class="leaf">${esc(node.label)}</li>`;
+  return `<li><details open><summary>${esc(node.label)}</summary><ul>${node.children.map(treeHTML).join('')}</ul></details></li>`;
+}
+
+function setPipeline(states) {
+  $('#pipeline').innerHTML = STAGES.map((s, i) =>
+    `<span class="stage ${states[i] || ''}">${states[i] === 'ok' ? '✓' : states[i] === 'bad' ? '✗' : '○'} ${s}</span>`
+  ).join('<span class="arrow">→</span>');
+}
+
+// Control-flow graph: blocks stacked in code order; fall-through arrows go straight down,
+// jumps are routed along the right side, each in its own lane.
+function cfgSVG(f, fi) {
+  const CH = 7.3, LH = 17, BP = 8, GAP = 30, X = 10, LANE = 14;
+  const w = Math.max(...f.blocks.flatMap(b => b.code.map(c => c.length))) * CH + 2 * BP;
+  let y = 14;
+  const pos = f.blocks.map(b => { const h = b.code.length * LH + 2 * BP, p = {y, h}; y += h + GAP; return p; });
+  let lanes = 0, edges = '';
+  f.blocks.forEach((b, i) => b.succ.forEach(([j, label, kind]) => {
+    const cls = label === 'true' ? 't' : label === 'false' ? 'f' : 'g';
+    const tag = label ? `<text class="l${cls}"` : '';
+    if (kind === 'fall') {
+      const x = X + w / 2, y1 = pos[i].y + pos[i].h, y2 = pos[j].y;
+      edges += `<path class="e${cls}" d="M${x} ${y1} V${y2 - 1}" marker-end="url(#ah${fi})"/>` + (label ? `${tag} x="${x + 6}" y="${y1 + 17}">${label}</text>` : '');
+    } else {
+      lanes += 1;
+      const lx = X + w + 10 + lanes * LANE, y1 = pos[i].y + pos[i].h - 10, y2 = pos[j].y + 12;
+      edges += `<path class="e${cls}" d="M${X + w} ${y1} H${lx} V${y2} H${X + w + 1}" marker-end="url(#ah${fi})"/>` +
+               (label ? `${tag} x="${X + w + 4}" y="${y1 - 4}">${label}</text>` : '');
+    }
+  }));
+  const blocks = f.blocks.map((b, i) => `<g class="${b.reachable ? '' : 'unreach'}" data-line="${b.lines[0] || 0}" data-lines=" ${b.lines.join(' ')} ">
+      <rect x="${X}" y="${pos[i].y}" width="${w}" height="${pos[i].h}" rx="6"/>` +
+    b.code.map((c, k) => `<text x="${X + BP}" y="${pos[i].y + BP + 12 + k * LH}" xml:space="preserve">${esc(c)}</text>`).join('') +
+    (b.reachable ? '' : `<text class="ul" x="${X + w}" y="${pos[i].y - 4}" text-anchor="end">unreachable</text>`) + '</g>').join('');
+  const width = X + w + 30 + (lanes + 1) * LANE;
+  return `<svg class="cfg" width="${width}" height="${y - GAP + 14}" role="img" aria-label="Control-flow graph of ${esc(f.name)}">
+    <defs><marker id="ah${fi}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>${blocks}${edges}</svg>`;
+}
+let cfgWhich = 'tac';
+function renderCfg() {
+  const funcs = result.cfg[cfgWhich];
+  const n = funcs.reduce((s, f) => s + f.blocks.length, 0), dead = funcs.reduce((s, f) => s + f.blocks.filter(b => !b.reachable).length, 0);
+  let fi = 0;
+  $('#p-cfg').innerHTML = `<div class="toggle"><button data-w="tac" class="${cfgWhich === 'tac' ? 'on' : ''}">Original TAC</button>` +
+    `<button data-w="opt" class="${cfgWhich === 'opt' ? 'on' : ''}">Optimized TAC</button></div>` +
+    `<p class="hint muted">${n} basic blocks${dead ? `, <span class="bad">${dead} unreachable</span>` : ''} · ` +
+    `<span class="ok">green</span> = condition true, <span class="bad">red</span> = false · hover a block to see its source line</p>` +
+    funcs.map(f => `<h3>function ${esc(f.name)} · ${f.blocks.length} block${f.blocks.length > 1 ? 's' : ''}</h3>${cfgSVG(f, fi++)}`).join('');
+  linkFromCaret();
+}
+$('#p-cfg').addEventListener('click', e => { const b = e.target.closest('[data-w]'); if (b) { cfgWhich = b.dataset.w; renderCfg(); } });
+
+// ---- step-by-step debugger over the simulator's trace
+let dbg = null, playing = null;
+function setupDebugger(r) {
+  const trace = r.run.trace, asm = r.asm.split('\n');
+  dbg = {trace, asm, lines: r.asm_lines, k: 0, run: r.run};
+  $('#p-debug').innerHTML = `<div class="dbg-bar">
+      <button data-act="restart" title="Back to the start">⏮</button>
+      <button data-act="back" title="Step back (←)">◀ Back</button>
+      <button data-act="step" class="run" title="Run one instruction (→)">Step ▶</button>
+      <button data-act="play" id="dbg-play">▶▶ Play</button>
+      <input type="range" id="dbg-range" min="0" max="${trace.length - 1}" value="0" aria-label="Step">
+      <span id="dbg-pos" class="muted"></span></div>
+    <p class="hint muted" id="dbg-note"></p>
+    <div class="dbg"><div id="dbg-asm">${rowsHTML(r.asm, r.asm_lines)}</div>
+    <div class="dbg-side"><h3>Registers</h3><table id="dbg-reg"></table><h3>Call stack</h3><div id="dbg-calls"></div>
+    <h3>Variables (current call)</h3><table id="dbg-vars"></table><h3>Value stack</h3><div id="dbg-stack"></div>
+    <h3>Output so far</h3><pre id="dbg-out"></pre></div></div>`;
+  $('#dbg-range').oninput = e => { dbg.k = +e.target.value; drawStep(); };
+}
+function stepTo(k) { if (dbg) { dbg.k = Math.max(0, Math.min(dbg.trace.length - 1, k)); drawStep(); } }
+function stopPlay() { if (playing) { clearInterval(playing); playing = null; const b = $('#dbg-play'); if (b) b.textContent = '▶▶ Play'; } }
+$('#p-debug').addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (!act || !dbg) return;
+  if (act !== 'play') stopPlay();
+  if (act === 'restart') stepTo(0);
+  if (act === 'back') stepTo(dbg.k - 1);
+  if (act === 'step') stepTo(dbg.k + 1);
+  if (act === 'play') {
+    if (playing) return stopPlay();
+    e.target.textContent = '⏸ Pause';
+    playing = setInterval(() => { if (dbg.k >= dbg.trace.length - 1) stopPlay(); else stepTo(dbg.k + 1); }, 120);
+  }
+});
+document.addEventListener('keydown', e => {
+  if (tab !== 'debug' || document.activeElement === src || !dbg) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); stopPlay(); stepTo(dbg.k + 1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); stopPlay(); stepTo(dbg.k - 1); }
+});
+function drawStep() {
+  const {trace, asm, lines, k, run} = dbg, s = trace[k], prev = trace[k - 1] || s;
+  const last = k === trace.length - 1, op = (asm[s.pc] || '').trim().split(/\s+/)[0];
+  $('#dbg-range').value = k;
+  $('#dbg-pos').textContent = `step ${k + 1} of ${trace.length}` + (lines[s.pc] ? ` · line ${lines[s.pc]}` : '');
+  let note = 'The highlighted instruction runs next. ← and → also step.';
+  if (last && op === 'HALT') note = `Program finished with exit code ${run.exit_code}.`;
+  else if (last && run.error) note = `<span class="bad">The highlighted instruction fails: ${esc(run.error)}</span>`;
+  else if (last) note = `Showing the first ${trace.length.toLocaleString()} of ${run.steps.toLocaleString()} instructions.`;
+  $('#dbg-note').innerHTML = note;
+  const box = $('#dbg-asm');
+  box.querySelectorAll('.cur').forEach(e => e.classList.remove('cur'));
+  const row = box.querySelectorAll('.rows div')[s.pc];
+  if (row) {
+    row.classList.add('cur');
+    if (row.offsetTop < box.scrollTop || row.offsetTop > box.scrollTop + box.clientHeight - 30) box.scrollTop = row.offsetTop - box.clientHeight / 3;
+  }
+  const chg = (a, b) => a !== b ? ' class="chg"' : '';
+  $('#dbg-reg').innerHTML = Object.entries(s.reg).map(([r, v]) => `<tr><td>${r}</td><td${chg(v, prev.reg[r])}>${v}</td></tr>`).join('');
+  $('#dbg-calls').innerHTML = s.calls.length ? esc(s.calls.join(' → ')) : '<span class="muted">(not in a function yet)</span>';
+  const sameCall = prev.calls.length === s.calls.length;
+  const vars = Object.entries(s.vars).sort(([a], [b]) => (a[0] === '_') - (b[0] === '_') || a.localeCompare(b));
+  $('#dbg-vars').innerHTML = vars.length ? vars.map(([n, v]) =>
+    `<tr${n[0] === '_' ? ' class="tmp"' : ''}><td>${esc(n)}</td><td${sameCall ? chg(v, prev.vars[n]) : ''}>${v}</td></tr>`).join('')
+    : '<tr><td class="muted">(none)</td></tr>';
+  $('#dbg-stack').innerHTML = s.stack.length ? s.stack.join(', ') : '<span class="muted">(empty)</span>';
+  $('#dbg-out').textContent = run.output.slice(0, s.out);
+  $('#dbg-out').scrollTop = 1e9;
+  if (tab === 'debug') { placeHl(hlStep, lines[s.pc]); if (lines[s.pc]) revealLine(lines[s.pc]); }
+}
+
+// ---- main render
+function render(r) {
+  result = r; stale = false; stopPlay();
+  const errs = r.errors, has = p => errs.some(e => e.phase === p && e.severity === 'error');
+  const nErr = errs.filter(e => e.severity === 'error').length;
+  const front = has('lexical') || has('syntax');
+  const run = r.run;
+  setPipeline([has('lexical') ? 'bad' : 'ok', has('lexical') ? '' : has('syntax') ? 'bad' : 'ok', front ? '' : has('semantic') ? 'bad' : 'ok',
+               run && 'ok', run && 'ok', run && 'ok', run ? (run.error ? 'bad' : 'ok') : '']);
+
+  marks = {};
+  errs.forEach(e => { if (marks[e.line] !== 'err') marks[e.line] = e.severity === 'error' ? 'err' : 'warn'; });
+  renderGutter();
+
+  $('#n-errors').innerHTML = errs.length ? `<span class="badge" style="${nErr ? '' : 'background:var(--warn)'}">${errs.length}</span>` : '';
+  $('#p-errors').innerHTML = errs.length ? errs.map(e =>
+    `<div class="${e.severity}" data-line="${e.line}"><b>Line ${e.line}:${e.col}</b> <span class="muted">${e.severity} · ${e.phase}</span><br>${esc(e.msg)}</div>`
+  ).join('') : '<p class="ok">No errors or warnings.</p>';
+
+  $('#p-tokens').innerHTML = `<p class="muted">${r.tokens.length} tokens</p><table><tr><th>#</th><th>Line:Col</th><th>Token</th><th>Value</th></tr>` +
+    r.tokens.map(([k, v, l, c], i) => `<tr data-line="${l}"><td class="muted">${i + 1}</td><td>${l}:${c}</td><td>${esc(k)}</td><td>${esc(k === 'STR' ? JSON.stringify(v) : v)}</td></tr>`).join('') + '</table>';
+
+  $('#p-tree').innerHTML = (front ? '<p class="muted">Partial tree: statements with syntax errors were skipped.</p>' : '') +
+    `<ul class="tree">${treeHTML(r.tree)}</ul>`;
+
+  const skipped = '<p class="muted">Not generated: fix the errors first.</p>';
+  const linkHint = '<p class="hint muted">Click a line in the editor to highlight its code here; hover a line here to see its source.</p>';
+  if (run) {
+    const s = r.stats, pct = Math.round(100 * (1 - s.opt_tac / s.tac));
+    $('#p-tac').innerHTML = `<p>${s.tac} → <b>${s.opt_tac}</b> instructions <span class="muted">(${pct}% removed by constant folding, propagation, algebraic simplification, dead and unreachable code elimination)</span></p>${linkHint}
+      <div class="cols"><div><h3>Three-address code</h3>${rowsHTML(r.tac, r.tac_lines)}</div><div><h3>Optimized</h3>${rowsHTML(r.opt_tac, r.opt_lines)}</div></div>`;
+    $('#p-asm').innerHTML = `<p class="muted">${s.asm} instructions · registers R0 (return value), R1, R2 · named memory slots per call frame</p>${linkHint}${rowsHTML(r.asm, r.asm_lines)}`;
+    $('#p-output').innerHTML = `<pre>${esc(run.output) || '<span class="muted">(no output)</span>'}</pre>` +
+      (run.error ? `<p class="bad">${esc(run.error)}</p>` : `<p class="muted">Program exited with code ${run.exit_code} after ${run.steps} instructions.</p>`);
+    renderCfg();
+    setupDebugger(r);
+  } else {
+    dbg = null;
+    $('#p-tac').innerHTML = $('#p-asm').innerHTML = $('#p-cfg').innerHTML = $('#p-debug').innerHTML = skipped;
+    $('#p-output').innerHTML = `<p class="bad">Compilation failed with ${nErr} error(s). See the Errors tab.</p>`;
+  }
+  show(nErr ? 'errors' : tab === 'errors' ? 'output' : tab);
+}
+
+async function compile() {
+  $('#run').disabled = true;
+  try {
+    const r = await compileSource(src.value);
+    if (r.internal) throw new Error('internal compiler error: ' + r.internal);
+    render(r);
+  } catch (e) {
+    $('#p-output').innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+    show('output');
+  } finally {
+    $('#run').disabled = false;
+  }
+}
+$('#run').onclick = compile;
+
+// Served by studio.py: use its API. On a static host (e.g. a Hugging Face Static Space): run minic.py in the browser with Pyodide.
+let py = null;
+async function compileSource(source) {
+  if (!py) return (await fetch('/compile', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({source})})).json();
+  py.globals.set('source', source);
+  return JSON.parse(py.runPython('json.dumps(minic.compile_source(source))'));
+}
+async function loadExamples() {
+  const res = await fetch('/examples').catch(() => null);
+  if (res && res.ok && (res.headers.get('Content-Type') || '').startsWith('application/json')) return res.json();
+  $('#p-output').innerHTML = '<p>Loading the compiler in your browser (first visit takes a few seconds)…</p>';
+  await new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+    s.onload = ok; s.onerror = () => fail(new Error('Could not load Pyodide. Check your internet connection.'));
+    document.head.append(s);
+  });
+  const pyodide = await loadPyodide();
+  pyodide.FS.writeFile('/home/pyodide/minic.py', await (await fetch('minic.py')).text());
+  pyodide.runPython("import sys; sys.path.insert(0, '/home/pyodide'); import json, minic");
+  py = pyodide;
+  // shortcut: a static host can't list a folder, so example names are listed here; add new examples to this list too.
+  const names = ['1_factorial.mc', '2_primes.mc', '3_optimizer_demo.mc', '4_syntax_errors.mc', '5_semantic_errors.mc'];
+  return Object.fromEntries(await Promise.all(names.map(async n => [n, await (await fetch('examples/' + n)).text()])));
+}
+
+(async () => {
+  $('#run').disabled = true;
+  let examples;
+  try { examples = await loadExamples(); } catch (e) { $('#p-output').innerHTML = `<p class="bad">${esc(e.message)}</p>`; return; }
+  $('#run').disabled = false;
+  const sel = $('#examples');
+  sel.innerHTML = Object.keys(examples).map(n => `<option>${esc(n)}</option>`).join('');
+  sel.onchange = () => { src.value = examples[sel.value]; compile(); };
+  sel.onchange();
+})();
+setPipeline([]);
+show('output');
+</script>
+</body>
+</html>
